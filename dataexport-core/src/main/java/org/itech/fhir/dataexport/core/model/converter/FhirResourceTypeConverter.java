@@ -7,7 +7,7 @@ import javax.persistence.Converter;
 
 import org.hl7.fhir.r4.model.ResourceType;
 
-@Converter(autoApply = true)
+@Converter
 public class FhirResourceTypeConverter implements AttributeConverter<ResourceType, String> {
 
 	@Override

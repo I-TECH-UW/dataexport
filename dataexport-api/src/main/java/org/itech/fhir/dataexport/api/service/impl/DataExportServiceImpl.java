@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.Future;
 
 import org.apache.commons.lang3.StringUtils;
@@ -28,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
+import ca.uhn.fhir.rest.client.interceptor.AdditionalRequestHeadersInterceptor;
 import ca.uhn.fhir.rest.param.DateRangeParam;
 import lombok.extern.slf4j.Slf4j;
 
@@ -36,7 +39,7 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional
 public class DataExportServiceImpl implements DataExportService {
 
-	@Value("${org.openelisglobal.fhirstore.uri")
+	@Value("${org.openelisglobal.fhirstore.uri}")
 	private String localFhirStore;
 
 	@Value("${org.openelisglobal.fhir.subscriber}")
@@ -116,13 +119,20 @@ public class DataExportServiceImpl implements DataExportService {
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt,
 					DataExportStatus.EXPORTING);
 
-			IGenericClient sourceFhirClient = fhirContext.newRestfulGenericClient(defaultRemoteServer);
+			IGenericClient remoteFhirClient = fhirContext.newRestfulGenericClient(defaultRemoteServer);
+			AdditionalRequestHeadersInterceptor interceptor = new AdditionalRequestHeadersInterceptor();
+			Map<String, String> headers = dataExportAttempt.getDataExportTask().getHeaders();
+
+			for (Entry<String, String> header : headers.entrySet()) {
+				interceptor.addHeaderValue(header.getKey(), header.getValue());
+			}
+			remoteFhirClient.registerInterceptor(interceptor);
 
 			for (Bundle localSearchBundle : localSearchBundles) {
 				Bundle transactionBundle = createTransactionBundleFromSearchResponseBundle(localSearchBundle);
 				log.trace("sending bundle to remote: "
 						+ fhirContext.newJsonParser().encodeResourceToString(transactionBundle));
-				Bundle transactionResponseBundle = sourceFhirClient//
+				Bundle transactionResponseBundle = remoteFhirClient//
 						.transaction()//
 						.withBundle(transactionBundle).execute();
 				log.trace("received transaction response bundle from remote: "

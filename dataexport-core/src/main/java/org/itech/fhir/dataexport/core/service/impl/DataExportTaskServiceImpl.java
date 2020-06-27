@@ -6,8 +6,8 @@ import java.util.List;
 import org.itech.fhir.dataexport.core.dao.DataExportAttemptDAO;
 import org.itech.fhir.dataexport.core.dao.DataExportTaskDAO;
 import org.itech.fhir.dataexport.core.model.DataExportAttempt;
-import org.itech.fhir.dataexport.core.model.DataExportTask;
 import org.itech.fhir.dataexport.core.model.DataExportAttempt.DataExportStatus;
+import org.itech.fhir.dataexport.core.model.DataExportTask;
 import org.itech.fhir.dataexport.core.service.DataExportTaskService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -40,7 +40,7 @@ public class DataExportTaskServiceImpl extends CrudServiceImpl<DataExportTask, L
 
 		List<DataExportAttempt> lastImportAttempts = dataExportAttemptDAO
 				.findLatestDataExportAttemptsByDataExportTaskAndStatus(PageRequest.of(0, 1), dataExportTask.getId(),
-						DataExportStatus.SUCCEEDED);
+						DataExportStatus.SUCCEEDED.name());
 		if (lastImportAttempts.size() == 1) {
 			DataExportAttempt latestAttempt = lastImportAttempts.get(0);
 			lastSuccess = latestAttempt.getStartTime();

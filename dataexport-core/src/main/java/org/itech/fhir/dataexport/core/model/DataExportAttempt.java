@@ -3,15 +3,15 @@ package org.itech.fhir.dataexport.core.model;
 import java.time.Instant;
 
 import javax.persistence.Column;
-import javax.persistence.Convert;
 import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 import javax.validation.constraints.NotNull;
 
 import org.itech.fhir.dataexport.core.model.base.PersistenceEntity;
-import org.itech.fhir.dataexport.core.model.converter.DataExportStatusConverter;
 
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -54,7 +54,7 @@ public class DataExportAttempt extends PersistenceEntity<Long> {
 	private DataExportTask dataExportTask;
 
 	// persistence
-	@Convert(converter = DataExportStatusConverter.class)
+	@Enumerated(EnumType.STRING)
 	@Column(name = "data_export_status")
 	// validation
 	@NotNull

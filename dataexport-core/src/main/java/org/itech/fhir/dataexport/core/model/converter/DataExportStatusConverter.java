@@ -7,7 +7,7 @@ import javax.persistence.Converter;
 
 import org.itech.fhir.dataexport.core.model.DataExportAttempt.DataExportStatus;
 
-@Converter(autoApply = true)
+@Converter
 public class DataExportStatusConverter implements AttributeConverter<DataExportStatus, Character> {
 
 	@Override
@@ -30,3 +30,4 @@ public class DataExportStatusConverter implements AttributeConverter<DataExportS
 	}
 
 }
+
