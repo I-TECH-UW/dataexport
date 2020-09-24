@@ -16,13 +16,13 @@ import org.hl7.fhir.r4.model.Bundle.BundleType;
 import org.hl7.fhir.r4.model.Bundle.HTTPVerb;
 import org.hl7.fhir.r4.model.ResourceType;
 import org.itech.fhir.dataexport.api.service.DataExportService;
+import org.itech.fhir.dataexport.api.service.DataExportSource;
 import org.itech.fhir.dataexport.api.service.DataExportStatusService;
 import org.itech.fhir.dataexport.core.dao.DataExportAttemptDAO;
 import org.itech.fhir.dataexport.core.model.DataExportAttempt;
 import org.itech.fhir.dataexport.core.model.DataExportAttempt.DataExportStatus;
 import org.itech.fhir.dataexport.core.model.DataExportTask;
 import org.itech.fhir.dataexport.core.service.DataExportTaskService;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.AsyncResult;
 import org.springframework.stereotype.Service;
@@ -39,15 +39,6 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional
 public class DataExportServiceImpl implements DataExportService {
 
-	@Value("${org.openelisglobal.fhirstore.uri}")
-	private String localFhirStore;
-
-	@Value("${org.openelisglobal.fhir.subscriber}")
-	private String defaultRemoteServer;
-
-	@Value("${org.openelisglobal.fhir.subscriber.resources}")
-	private String[] defaultResources;
-
 	private DataExportTaskService dataExportTaskService;
 	private DataExportAttemptDAO dataExportAttemptDAO;
 	private DataExportStatusService dataExportStatusService;
@@ -63,14 +54,16 @@ public class DataExportServiceImpl implements DataExportService {
 
 	@Override
 	@Async
-	public Future<DataExportStatus> exportNewDataFromLocalToRemote(DataExportTask dataExportTask) {
+	public Future<DataExportStatus> exportNewDataFromSourceToRemote(DataExportTask dataExportTask,
+			DataExportSource dataExportSource) {
 		DataExportAttempt dataExportAttempt = dataExportAttemptDAO.save(new DataExportAttempt(dataExportTask));
-		return runDataExportAttempt(dataExportAttempt);
+		return runDataExportAttempt(dataExportAttempt, dataExportSource);
 	}
 
-	private Future<DataExportStatus> runDataExportAttempt(DataExportAttempt dataExportAttempt) {
+	private Future<DataExportStatus> runDataExportAttempt(DataExportAttempt dataExportAttempt,
+			DataExportSource dataExportSource) {
 		List<Bundle> localBundles = new ArrayList<>();
-		DataExportStatus status = getBundlesFromLocalServer(dataExportAttempt, localBundles);
+		DataExportStatus status = getBundlesFromSource(dataExportAttempt, dataExportSource, localBundles);
 		if (status.equals(DataExportStatus.COLLECTED)) {
 			status = sendBundlesToRemote(dataExportAttempt, localBundles);
 		}
@@ -78,7 +71,8 @@ public class DataExportServiceImpl implements DataExportService {
 		return new AsyncResult<>(status);
 	}
 
-	private DataExportStatus getBundlesFromLocalServer(DataExportAttempt dataExportAttempt, List<Bundle> localBundles) {
+	private DataExportStatus getBundlesFromSource(DataExportAttempt dataExportAttempt,
+			DataExportSource dataExportSource, List<Bundle> localBundles) {
 
 		DataExportTask dataExportTask = dataExportAttempt.getDataExportTask();
 		Instant lastSuccess = dataExportTaskService.getLatestSuccessInstantForDataExportTask(dataExportTask);
@@ -88,12 +82,13 @@ public class DataExportServiceImpl implements DataExportService {
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt,
 					DataExportStatus.REQUESTING);
 
-			IGenericClient sourceFhirClient = fhirContext.newRestfulGenericClient(localFhirStore);
+			IGenericClient sourceFhirClient = fhirContext
+					.newRestfulGenericClient(dataExportSource.getLocalFhirStorePath());
 
-			for (String resource : defaultResources) {
+			for (ResourceType resource : dataExportAttempt.getDataExportTask().getFhirResources()) {
 				Bundle localSearchBundle = sourceFhirClient//
 						.search()//
-						.forResource(resource)//
+						.forResource(resource.toString())//
 						.lastUpdated(dateRange)//
 						.returnBundle(Bundle.class).execute();
 				localBundles.add(localSearchBundle);
@@ -119,7 +114,8 @@ public class DataExportServiceImpl implements DataExportService {
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt,
 					DataExportStatus.EXPORTING);
 
-			IGenericClient remoteFhirClient = fhirContext.newRestfulGenericClient(defaultRemoteServer);
+			IGenericClient remoteFhirClient = fhirContext
+					.newRestfulGenericClient(dataExportAttempt.getDataExportTask().getEndpoint());
 			AdditionalRequestHeadersInterceptor interceptor = new AdditionalRequestHeadersInterceptor();
 			Map<String, String> headers = dataExportAttempt.getDataExportTask().getHeaders();
 
