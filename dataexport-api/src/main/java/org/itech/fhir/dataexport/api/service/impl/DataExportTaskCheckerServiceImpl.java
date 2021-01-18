@@ -45,7 +45,7 @@ public class DataExportTaskCheckerServiceImpl implements DataExportTaskCheckerSe
 					try {
 						dataExportService.exportNewDataFromSourceToRemote(dataExportTask, dataExportSource);
 					} catch (InterruptedException | ExecutionException | TimeoutException e) {
-						log.error("error while importing data", e);
+						log.error("error while exporting data", e);
 					}
 				}
 			}
