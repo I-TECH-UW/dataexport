@@ -22,6 +22,7 @@ import org.itech.fhir.dataexport.core.model.DataExportAttempt;
 import org.itech.fhir.dataexport.core.model.DataExportAttempt.DataExportStatus;
 import org.itech.fhir.dataexport.core.model.DataExportTask;
 import org.itech.fhir.dataexport.core.service.DataExportTaskService;
+import org.itech.fhir.dataexport.core.service.FhirClientFetcher;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.AsyncResult;
@@ -52,13 +53,15 @@ public class DataExportServiceImpl implements DataExportService {
 	private DataExportAttemptDAO dataExportAttemptDAO;
 	private DataExportStatusService dataExportStatusService;
 	private FhirContext fhirContext;
+	private FhirClientFetcher clientFetcher;
 
 	public DataExportServiceImpl(DataExportTaskService dataExportTaskService, DataExportAttemptDAO dataExportAttemptDAO,
-			DataExportStatusService dataExportStatusService, FhirContext fhirContext) {
+			DataExportStatusService dataExportStatusService, FhirContext fhirContext, FhirClientFetcher clientFetcher) {
 		this.dataExportTaskService = dataExportTaskService;
 		this.dataExportAttemptDAO = dataExportAttemptDAO;
 		this.dataExportStatusService = dataExportStatusService;
 		this.fhirContext = fhirContext;
+		this.clientFetcher = clientFetcher;
 	}
 
 	@Override
@@ -88,7 +91,7 @@ public class DataExportServiceImpl implements DataExportService {
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt,
 					DataExportStatus.REQUESTING);
 
-			IGenericClient sourceFhirClient = fhirContext.newRestfulGenericClient(localFhirStore);
+			IGenericClient sourceFhirClient = clientFetcher.getFhirClient(localFhirStore);
 
 			for (String resource : defaultResources) {
 				Bundle localSearchBundle = sourceFhirClient//
@@ -119,7 +122,7 @@ public class DataExportServiceImpl implements DataExportService {
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt,
 					DataExportStatus.EXPORTING);
 
-			IGenericClient remoteFhirClient = fhirContext.newRestfulGenericClient(defaultRemoteServer);
+			IGenericClient remoteFhirClient = clientFetcher.getFhirClient(defaultRemoteServer);
 			AdditionalRequestHeadersInterceptor interceptor = new AdditionalRequestHeadersInterceptor();
 			Map<String, String> headers = dataExportAttempt.getDataExportTask().getHeaders();
 
