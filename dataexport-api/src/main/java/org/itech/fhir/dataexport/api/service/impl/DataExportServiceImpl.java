@@ -178,7 +178,6 @@ public class DataExportServiceImpl implements DataExportService {
 		}
 
 		BundleEntryComponent transactionComponent = new BundleEntryComponent();
-		transactionComponent.setFullUrl(searchComponent.getFullUrl());
 		transactionComponent.setResource(searchComponent.getResource());
 
 		transactionComponent.getRequest().setMethod(HTTPVerb.PUT);
