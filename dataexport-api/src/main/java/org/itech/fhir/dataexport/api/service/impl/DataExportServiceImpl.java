@@ -10,10 +10,12 @@ import java.util.concurrent.Future;
 
 import org.apache.commons.lang3.StringUtils;
 import org.hl7.fhir.instance.model.api.IBaseBundle;
+import org.hl7.fhir.r4.model.BooleanType;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
 import org.hl7.fhir.r4.model.Bundle.BundleType;
 import org.hl7.fhir.r4.model.Bundle.HTTPVerb;
+import org.hl7.fhir.r4.model.DomainResource;
 import org.hl7.fhir.r4.model.ResourceType;
 import org.itech.fhir.dataexport.api.service.DataExportService;
 import org.itech.fhir.dataexport.api.service.DataExportStatusService;
@@ -88,8 +90,7 @@ public class DataExportServiceImpl implements DataExportService {
 		DateRangeParam dateRange = new DateRangeParam().setLowerBoundInclusive(Date.from(lastSuccess))
 				.setUpperBoundInclusive(Date.from(dataExportAttempt.getStartTime()));
 		try {
-			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt,
-					DataExportStatus.REQUESTING);
+			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.REQUESTING);
 
 			IGenericClient sourceFhirClient = clientFetcher.getFhirClient(localFhirStore);
 
@@ -119,8 +120,7 @@ public class DataExportServiceImpl implements DataExportService {
 	private DataExportStatus sendBundlesToRemote(DataExportAttempt dataExportAttempt, List<Bundle> localSearchBundles) {
 		boolean anyTransactionSucceeded = false;
 		try {
-			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt,
-					DataExportStatus.EXPORTING);
+			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.EXPORTING);
 
 			IGenericClient remoteFhirClient = clientFetcher.getFhirClient(defaultRemoteServer);
 			AdditionalRequestHeadersInterceptor interceptor = new AdditionalRequestHeadersInterceptor();
@@ -133,17 +133,20 @@ public class DataExportServiceImpl implements DataExportService {
 
 			for (Bundle localSearchBundle : localSearchBundles) {
 				Bundle transactionBundle = createTransactionBundleFromSearchResponseBundle(localSearchBundle);
-				log.trace("sending bundle to remote: "
-						+ fhirContext.newJsonParser().encodeResourceToString(transactionBundle));
-				Bundle transactionResponseBundle = remoteFhirClient//
-						.transaction()//
-						.withBundle(transactionBundle).execute();
-				log.trace("received transaction response bundle from remote: "
-						+ fhirContext.newJsonParser().encodeResourceToString(transactionResponseBundle));
-				anyTransactionSucceeded = true;
+				if (transactionBundle.hasEntry()) {
+					log.trace("sending bundle to remote: "
+							+ fhirContext.newJsonParser().encodeResourceToString(transactionBundle));
+					Bundle transactionResponseBundle = remoteFhirClient//
+							.transaction()//
+							.withBundle(transactionBundle).execute();
+					log.trace("received transaction response bundle from remote: "
+							+ fhirContext.newJsonParser().encodeResourceToString(transactionResponseBundle));
+					anyTransactionSucceeded = true;
+				} else {
+					log.trace("empty transaction bundle. not sending to remote");
+				}
 			}
-			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt,
-					DataExportStatus.SUCCEEDED);
+			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.SUCCEEDED);
 			return DataExportStatus.SUCCEEDED;
 		} catch (RuntimeException e) {
 			log.error("error occured while sending resources to remote fhir store", e);
@@ -160,11 +163,17 @@ public class DataExportServiceImpl implements DataExportService {
 		Bundle transactionBundle = new Bundle();
 		transactionBundle.setType(BundleType.TRANSACTION);
 		for (BundleEntryComponent searchComponent : searchBundle.getEntry()) {
-			if (searchComponent.hasResource()) {
-				BundleEntryComponent transactionComponent = createTransactionComponentFromSearchComponent(
-						searchComponent);
-				transactionBundle.addEntry(transactionComponent);
-				transactionBundle.setTotal(transactionBundle.getTotal() + 1);
+			if (searchComponent.hasResource() && searchComponent.getResource() instanceof DomainResource) {
+				DomainResource resource = (DomainResource) searchComponent.getResource();
+				if (!resource.hasExtension("http://hapifhir.io/fhir/StructureDefinition/resource-placeholder")
+						|| !((BooleanType) resource
+								.getExtensionByUrl("http://hapifhir.io/fhir/StructureDefinition/resource-placeholder")
+								.getValue()).booleanValue()) {
+					BundleEntryComponent transactionComponent = createTransactionComponentFromSearchComponent(
+							searchComponent);
+					transactionBundle.addEntry(transactionComponent);
+					transactionBundle.setTotal(transactionBundle.getTotal() + 1);
+				}
 			}
 		}
 		return transactionBundle;
