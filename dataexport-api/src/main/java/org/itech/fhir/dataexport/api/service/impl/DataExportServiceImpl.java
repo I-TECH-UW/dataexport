@@ -1,5 +1,7 @@
 package org.itech.fhir.dataexport.api.service.impl;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
@@ -89,6 +91,7 @@ public class DataExportServiceImpl implements DataExportService {
 		Instant lastSuccess = dataExportTaskService.getLatestSuccessInstantForDataExportTask(dataExportTask);
 		DateRangeParam dateRange = new DateRangeParam().setLowerBoundInclusive(Date.from(lastSuccess))
 				.setUpperBoundInclusive(Date.from(dataExportAttempt.getStartTime()));
+		Bundle bundle = null;
 		try {
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.REQUESTING);
 
@@ -101,6 +104,7 @@ public class DataExportServiceImpl implements DataExportService {
 						.lastUpdated(dateRange)//
 						.returnBundle(Bundle.class).execute();
 				localBundles.add(localSearchBundle);
+				bundle = localSearchBundle;
 				log.trace("received json " + fhirContext.newJsonParser().encodeResourceToString(localSearchBundle));
 				while (localSearchBundle.getLink(IBaseBundle.LINK_NEXT) != null) {
 					localSearchBundle = sourceFhirClient.loadPage().next(localSearchBundle).execute();
@@ -110,6 +114,10 @@ public class DataExportServiceImpl implements DataExportService {
 			}
 		} catch (RuntimeException e) {
 			log.error("error occured while retrieving resources from local fhir store", e);
+			log.error(getStackTrace(e));
+			if (bundle != null) {
+				log.error(fhirContext.newJsonParser().encodeResourceToString(bundle));
+			}
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.FAILED);
 			return DataExportStatus.FAILED;
 		}
@@ -119,6 +127,7 @@ public class DataExportServiceImpl implements DataExportService {
 
 	private DataExportStatus sendBundlesToRemote(DataExportAttempt dataExportAttempt, List<Bundle> localSearchBundles) {
 		boolean anyTransactionSucceeded = false;
+		Bundle bundle = null;
 		try {
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.EXPORTING);
 
@@ -130,9 +139,10 @@ public class DataExportServiceImpl implements DataExportService {
 				interceptor.addHeaderValue(header.getKey(), header.getValue());
 			}
 			remoteFhirClient.registerInterceptor(interceptor);
-
 			for (Bundle localSearchBundle : localSearchBundles) {
+				bundle = localSearchBundle;
 				Bundle transactionBundle = createTransactionBundleFromSearchResponseBundle(localSearchBundle);
+				bundle = transactionBundle;
 				if (transactionBundle.hasEntry()) {
 					log.trace("sending bundle to remote: "
 							+ fhirContext.newJsonParser().encodeResourceToString(transactionBundle));
@@ -150,6 +160,10 @@ public class DataExportServiceImpl implements DataExportService {
 			return DataExportStatus.SUCCEEDED;
 		} catch (RuntimeException e) {
 			log.error("error occured while sending resources to remote fhir store", e);
+			log.error(getStackTrace(e));
+			if (bundle != null) {
+				log.error(fhirContext.newJsonParser().encodeResourceToString(bundle));
+			}
 			DataExportStatus status = DataExportStatus.FAILED;
 			if (anyTransactionSucceeded) {
 				status = DataExportStatus.INCOMPLETE;
@@ -193,6 +207,13 @@ public class DataExportServiceImpl implements DataExportService {
 		transactionComponent.getRequest().setUrl(resourceType + "/" + sourceResourceId);
 
 		return transactionComponent;
+	}
+
+	public static String getStackTrace(final Throwable throwable) {
+		final StringWriter sw = new StringWriter();
+		final PrintWriter pw = new PrintWriter(sw, true);
+		throwable.printStackTrace(pw);
+		return sw.getBuffer().toString();
 	}
 
 }
