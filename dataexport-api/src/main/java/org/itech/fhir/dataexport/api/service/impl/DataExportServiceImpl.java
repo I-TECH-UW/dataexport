@@ -4,6 +4,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,9 @@ public class DataExportServiceImpl implements DataExportService {
 
 	@Value("${org.openelisglobal.fhir.subscriber.resources}")
 	private String[] defaultResources;
+
+	@Value("${org.openelisglobal.fhir.subscriber.resource.singleTransaction:false}")
+	private Boolean singleTransaction;
 
 	private DataExportTaskService dataExportTaskService;
 	private DataExportAttemptDAO dataExportAttemptDAO;
@@ -121,6 +125,7 @@ public class DataExportServiceImpl implements DataExportService {
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.FAILED);
 			return DataExportStatus.FAILED;
 		}
+		log.debug("dataexport: number of bundles collected: " + localBundles.size());
 		dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.COLLECTED);
 		return DataExportStatus.COLLECTED;
 	}
@@ -128,6 +133,7 @@ public class DataExportServiceImpl implements DataExportService {
 	private DataExportStatus sendBundlesToRemote(DataExportAttempt dataExportAttempt, List<Bundle> localSearchBundles) {
 		boolean anyTransactionSucceeded = false;
 		Bundle bundle = null;
+		int count = 0;
 		try {
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.EXPORTING);
 
@@ -139,6 +145,15 @@ public class DataExportServiceImpl implements DataExportService {
 				interceptor.addHeaderValue(header.getKey(), header.getValue());
 			}
 			remoteFhirClient.registerInterceptor(interceptor);
+			if (singleTransaction) {
+				log.info("exporting FHIR resources in a single transaction");
+				localSearchBundles = translateBundlesToSingleBundle(localSearchBundles);
+			} else {
+				log.info("exporting FHIR resources in multiple transactions");
+			}
+
+			log.info("dataexport: number of bundles to export: " + localSearchBundles.size());
+
 			for (Bundle localSearchBundle : localSearchBundles) {
 				bundle = localSearchBundle;
 				Bundle transactionBundle = createTransactionBundleFromSearchResponseBundle(localSearchBundle);
@@ -155,11 +170,13 @@ public class DataExportServiceImpl implements DataExportService {
 				} else {
 					log.trace("empty transaction bundle. not sending to remote");
 				}
+				++count;
 			}
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.SUCCEEDED);
 			return DataExportStatus.SUCCEEDED;
 		} catch (RuntimeException e) {
-			log.error("error occured while sending resources to remote fhir store", e);
+			log.error("error occured while sending resources to remote fhir store. Sent " + count
+					+ " bundles successfully", e);
 			log.error(getStackTrace(e));
 			if (bundle != null) {
 				log.error(fhirContext.newJsonParser().encodeResourceToString(bundle));
@@ -171,6 +188,16 @@ public class DataExportServiceImpl implements DataExportService {
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, status);
 			return status;
 		}
+	}
+
+	private List<Bundle> translateBundlesToSingleBundle(List<Bundle> localSearchBundles) {
+		Bundle bundle = new Bundle();
+		for (Bundle localSearchBundle : localSearchBundles) {
+			for (BundleEntryComponent bundleEntry : localSearchBundle.getEntry()) {
+				bundle.addEntry(bundleEntry);
+			}
+		}
+		return Arrays.asList(bundle);
 	}
 
 	private Bundle createTransactionBundleFromSearchResponseBundle(Bundle searchBundle) {
