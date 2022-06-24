@@ -120,7 +120,7 @@ public class DataExportServiceImpl implements DataExportService {
 			log.error("error occured while retrieving resources from local fhir store", e);
 			log.error(getStackTrace(e));
 			if (bundle != null) {
-				log.error(fhirContext.newJsonParser().encodeResourceToString(bundle));
+				log.debug(fhirContext.newJsonParser().encodeResourceToString(bundle));
 			}
 			dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.FAILED);
 			return DataExportStatus.FAILED;
@@ -179,7 +179,7 @@ public class DataExportServiceImpl implements DataExportService {
 					+ " bundles successfully", e);
 			log.error(getStackTrace(e));
 			if (bundle != null) {
-				log.error(fhirContext.newJsonParser().encodeResourceToString(bundle));
+				log.debug(fhirContext.newJsonParser().encodeResourceToString(bundle));
 			}
 			DataExportStatus status = DataExportStatus.FAILED;
 			if (anyTransactionSucceeded) {
