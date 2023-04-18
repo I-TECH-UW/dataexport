@@ -2,8 +2,6 @@ package org.itech.fhir.dataexport.api.service.impl;
 
 import java.time.Instant;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
 
 import org.itech.fhir.dataexport.api.service.DataExportService;
 import org.itech.fhir.dataexport.api.service.DataExportTaskCheckerService;
@@ -20,51 +18,48 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class DataExportTaskCheckerServiceImpl implements DataExportTaskCheckerService {
 
-	@Value("${org.openelisglobal.fhir.subscriber}")
-	private Optional<String> defaultRemoteServer;
+    @Value("${org.openelisglobal.fhir.subscriber}")
+    private Optional<String> defaultRemoteServer;
 
-	private DataExportTaskService dataExportTaskService;
-	private DataExportService dataExportService;
+    private DataExportTaskService dataExportTaskService;
+    private DataExportService dataExportService;
 
-	public DataExportTaskCheckerServiceImpl(DataExportTaskService dataExportTaskService,
-			DataExportService dataExportService) {
-		log.info(this.getClass().getName() + " has started");
-		this.dataExportTaskService = dataExportTaskService;
-		this.dataExportService = dataExportService;
-	}
+    public DataExportTaskCheckerServiceImpl(DataExportTaskService dataExportTaskService,
+            DataExportService dataExportService) {
+        log.info(this.getClass().getName() + " has started");
+        this.dataExportTaskService = dataExportTaskService;
+        this.dataExportService = dataExportService;
+    }
 
-	@Override
-	@Scheduled(initialDelay = 10 * 1000, fixedRate = 60 * 1000)
-	@Transactional
-	public void checkDataRequestNeedsRunning() {
-		if (defaultRemoteServer.isPresent() && !"".equals(defaultRemoteServer.get())) {
-			log.trace("checking if servers need data import to be done");
+    @Override
+    @Scheduled(initialDelay = 10 * 1000, fixedRate = 60 * 1000)
+    @Transactional
+    public void checkDataRequestNeedsRunning() {
+        if (defaultRemoteServer.isPresent() && !"".equals(defaultRemoteServer.get())) {
+            log.trace("checking if servers need data import to be done");
 
-			Iterable<DataExportTask> dataExportTasks = dataExportTaskService.getDAO().findAll();
-			for (DataExportTask dataExportTask : dataExportTasks) {
-				if (maximumTimeHasPassed(dataExportTask)) {
-					log.debug("server found with dataExportTask needing to be run");
-					try {
-						dataExportService.exportNewDataFromLocalToRemote(dataExportTask);
-					} catch (InterruptedException | ExecutionException | TimeoutException e) {
-						log.error("error while importing data", e);
-					}
-				}
-			}
-		} else {
-			log.debug("not starting data request as there is no remote server specified to send it to");
-		}
-	}
+            Iterable<DataExportTask> dataExportTasks = dataExportTaskService.getDAO().findAll();
+            for (DataExportTask dataExportTask : dataExportTasks) {
+                if (maximumTimeHasPassed(dataExportTask)) {
+                    log.debug("server found with dataExportTask needing to be run");
+                    log.debug("data export task with id: " + dataExportTask.getId() + " is already running");
+                    dataExportService.exportNewDataFromLocalToRemote(dataExportTask);
+                }
+            }
+        } else {
+            log.debug("not starting data request as there is no remote server specified to send it to");
+        }
+    }
 
-	private boolean maximumTimeHasPassed(DataExportTask dataExportTask) {
-		if (dataExportTask.getMaxDataExportInterval() == 0 || dataExportTask.getMaxDataExportInterval() == null) {
-			return false;
-		}
-		Instant now = Instant.now();
-		Instant lastAttemptInstant = dataExportTaskService.getLatestInstantForDataExportTask(dataExportTask);
-		Instant nextScheduledRuntime = lastAttemptInstant.plus(dataExportTask.getMaxDataExportInterval(),
-				DataExportTask.MAX_INTERVAL_UNITS);
-		return now.isAfter(nextScheduledRuntime);
-	}
+    private boolean maximumTimeHasPassed(DataExportTask dataExportTask) {
+        if (dataExportTask.getMaxDataExportInterval() == 0 || dataExportTask.getMaxDataExportInterval() == null) {
+            return false;
+        }
+        Instant now = Instant.now();
+        Instant lastAttemptInstant = dataExportTaskService.getLatestInstantForDataExportTask(dataExportTask);
+        Instant nextScheduledRuntime = lastAttemptInstant.plus(dataExportTask.getMaxDataExportInterval(),
+                DataExportTask.MAX_INTERVAL_UNITS);
+        return now.isAfter(nextScheduledRuntime);
+    }
 
 }
