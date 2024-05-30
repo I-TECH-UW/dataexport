@@ -58,9 +58,6 @@ public class DataExportTask extends PersistenceEntity<Long> {
 	@Column(name = "endpoint")
 	private String endpoint;
 
-	@Column(name = "active")
-	private Boolean active;
-
 	public DataExportTask() {
 	}
 
