@@ -38,14 +38,14 @@ public class DataExportTaskServiceImpl extends CrudServiceImpl<DataExportTask, L
 	public Instant getLatestSuccessInstantForDataExportTask(DataExportTask dataExportTask) {
 		Instant lastSuccess = Instant.EPOCH;
 
-		List<DataExportAttempt> lastImportAttempts = dataExportAttemptDAO
+		List<DataExportAttempt> lastExportAttempts = dataExportAttemptDAO
 				.findLatestDataExportAttemptsByDataExportTaskAndStatus(PageRequest.of(0, 1), dataExportTask.getId(),
 						DataExportStatus.SUCCEEDED.name());
-		if (lastImportAttempts.size() == 1) {
-			DataExportAttempt latestAttempt = lastImportAttempts.get(0);
+		if (lastExportAttempts.size() == 1) {
+			DataExportAttempt latestAttempt = lastExportAttempts.get(0);
 			lastSuccess = latestAttempt.getStartTime();
 		}
-		log.debug("last data import success was at: " + lastSuccess);
+		log.debug("last data export success was at: " + lastSuccess);
 		return lastSuccess;
 	}
 
@@ -53,13 +53,13 @@ public class DataExportTaskServiceImpl extends CrudServiceImpl<DataExportTask, L
 	public Instant getLatestInstantForDataExportTask(DataExportTask dataExportTask) {
 		Instant lastAttempt = Instant.EPOCH;
 
-		List<DataExportAttempt> lastImportAttempts = dataExportAttemptDAO
+		List<DataExportAttempt> lastExportAttempts = dataExportAttemptDAO
 				.findLatestDataExportAttemptsByDataExportTask(PageRequest.of(0, 1), dataExportTask.getId());
-		if (lastImportAttempts.size() == 1) {
-			DataExportAttempt latestAttempt = lastImportAttempts.get(0);
+		if (lastExportAttempts.size() == 1) {
+			DataExportAttempt latestAttempt = lastExportAttempts.get(0);
 			lastAttempt = latestAttempt.getStartTime();
 		}
-		log.debug("last data import attempt was at: " + lastAttempt);
+		log.debug("last data export attempt was at: " + lastAttempt);
 		return lastAttempt;
 	}
 
