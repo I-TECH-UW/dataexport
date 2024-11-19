@@ -1,2 +1,11 @@
 *.class
 target/
+
+# IDE files #
+.idea/
+.vscode/
+.classpath
+.settings
+.project
+.factorypath
+
