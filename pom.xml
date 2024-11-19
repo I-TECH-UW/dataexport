@@ -12,6 +12,26 @@
 		<java.version>11</java.version>
 		<maven.compiler.release>11</maven.compiler.release>
 	</properties>
+	 
+	<repositories>
+		<repository>
+			<id>uwdigi-repo-central</id>
+			<name>DIGI Public Repository</name>
+			<url>https://packages.uwdigi.org/artifactory/public</url>
+		</repository>
+	</repositories>
+	<distributionManagement>
+		<repository>
+			<id>uwdigi-repo-central</id>
+			<name>libs-release</name>
+			<url>https://packages.uwdigi.org/artifactory/libs-release</url>
+		</repository>
+		<snapshotRepository>
+			<id>uwdigi-repo-snapshots</id>
+			<name>libs-snapshot</name>
+			<url>https://packages.uwdigi.org/artifactory/libs-snapshot</url>
+		</snapshotRepository>
+	</distributionManagement>
 
 	<modules>
 		<module>dataexport-api</module>
