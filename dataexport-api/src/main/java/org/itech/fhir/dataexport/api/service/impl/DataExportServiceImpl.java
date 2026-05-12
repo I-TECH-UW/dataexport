@@ -144,8 +144,12 @@ public class DataExportServiceImpl implements DataExportService {
                 }
             }
         } catch (RuntimeException e) {
-            log.error("error occured while retrieving resources from local fhir store", e);
-            log.error(getStackTrace(e));
+            if (isLikelyTransientNetworkFailure(e)) {
+                log.warn("failed to retrieve resources from local FHIR store at " + localFhirStore + ": "
+                        + rootCauseMessage(e));
+            } else {
+                log.error("error occured while retrieving resources from local fhir store", e);
+            }
             if (bundle != null) {
                 log.trace(fhirContext.newJsonParser().encodeResourceToString(bundle));
             }
@@ -158,9 +162,12 @@ public class DataExportServiceImpl implements DataExportService {
     }
 
     private DataExportStatus sendBundlesToRemote(DataExportAttempt dataExportAttempt, List<Bundle> localSearchBundles) {
+        String endpoint = dataExportAttempt.getDataExportTask().getEndpoint();
         boolean anyTransactionSucceeded = false;
         Bundle bundle = null;
-        int count = 0;
+        int bundlesSent = 0;
+        int bundlesSkippedEmpty = 0;
+        boolean probingMetadata = false;
         try {
             dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.EXPORTING);
 
@@ -194,10 +201,11 @@ public class DataExportServiceImpl implements DataExportService {
                     log.trace("received transaction response bundle from remote: "
                             + fhirContext.newJsonParser().encodeResourceToString(transactionResponseBundle));
                     anyTransactionSucceeded = true;
+                    ++bundlesSent;
                 } else {
                     log.trace("empty transaction bundle. not sending to remote");
+                    ++bundlesSkippedEmpty;
                 }
-                ++count;
             }
             if (!anyTransactionSucceeded) {
                 // Every bundle was empty — without an explicit probe we'd mark
@@ -206,17 +214,27 @@ public class DataExportServiceImpl implements DataExportService {
                 // so the attempt status reflects connectivity instead of just
                 // the emptiness of the local delta. A failure here propagates
                 // to the catch below and is recorded as FAILED.
-                log.debug("no entries to send; probing partner connectivity via /metadata");
+                log.debug("no entries to send; probing partner connectivity via /metadata at " + endpoint);
+                probingMetadata = true;
                 remoteFhirClient.capabilities().ofType(CapabilityStatement.class).execute();
             }
             dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.SUCCEEDED);
             return DataExportStatus.SUCCEEDED;
         } catch (RuntimeException e) {
-            log.error("error occured while sending resources to remote fhir store. Sent " + count
-                    + " bundles successfully", e);
-            log.error(getStackTrace(e));
-            if (bundle != null) {
-                log.trace(fhirContext.newJsonParser().encodeResourceToString(bundle));
+            String phase = probingMetadata ? "connectivity probe (GET " + endpoint + "metadata)"
+                    : "bundle transmission";
+            String summary = "data export to " + endpoint + " failed during " + phase + " — sent " + bundlesSent
+                    + " bundle(s), skipped " + bundlesSkippedEmpty + " empty, "
+                    + (localSearchBundles.size() - bundlesSent - bundlesSkippedEmpty) + " unprocessed";
+            if (isLikelyTransientNetworkFailure(e)) {
+                // Connection refused / timeout etc. is the expected failure mode when a
+                // partner is down. Log at WARN with the root-cause message only, not at
+                // ERROR with a 30-line stack — the trace adds no diagnostic value for an
+                // outage and floods the log every retry.
+                log.warn(summary + ": " + rootCauseMessage(e));
+            } else {
+                // Genuinely unexpected — preserve the stack at ERROR for post-mortem.
+                log.error(summary, e);
             }
             DataExportStatus status = DataExportStatus.FAILED;
             if (anyTransactionSucceeded) {
@@ -225,6 +243,30 @@ public class DataExportServiceImpl implements DataExportService {
             dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, status);
             return status;
         }
+    }
+
+    private static boolean isLikelyTransientNetworkFailure(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof ca.uhn.fhir.rest.client.exceptions.FhirClientConnectionException) {
+                return true;
+            }
+            String name = c.getClass().getName();
+            if (name.equals("java.net.ConnectException") || name.equals("java.net.SocketTimeoutException")
+                    || name.equals("java.net.UnknownHostException")
+                    || name.equals("org.apache.http.conn.HttpHostConnectException")
+                    || name.equals("org.apache.http.conn.ConnectTimeoutException")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String rootCauseMessage(Throwable t) {
+        Throwable c = t;
+        while (c.getCause() != null && c.getCause() != c) {
+            c = c.getCause();
+        }
+        return c.getClass().getSimpleName() + ": " + c.getMessage();
     }
 
     private List<Bundle> translateBundlesToSingleBundle(List<Bundle> localSearchBundles) {
