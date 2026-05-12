@@ -20,6 +20,7 @@ import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
 import org.hl7.fhir.r4.model.Bundle.BundleType;
 import org.hl7.fhir.r4.model.Bundle.HTTPVerb;
+import org.hl7.fhir.r4.model.CapabilityStatement;
 import org.hl7.fhir.r4.model.DomainResource;
 import org.hl7.fhir.r4.model.ResourceType;
 import org.itech.fhir.dataexport.api.service.DataExportService;
@@ -197,6 +198,16 @@ public class DataExportServiceImpl implements DataExportService {
                     log.trace("empty transaction bundle. not sending to remote");
                 }
                 ++count;
+            }
+            if (!anyTransactionSucceeded) {
+                // Every bundle was empty — without an explicit probe we'd mark
+                // SUCCEEDED here even when the partner is unreachable, which is
+                // misleading to operators watching sync health. Probe /metadata
+                // so the attempt status reflects connectivity instead of just
+                // the emptiness of the local delta. A failure here propagates
+                // to the catch below and is recorded as FAILED.
+                log.debug("no entries to send; probing partner connectivity via /metadata");
+                remoteFhirClient.capabilities().ofType(CapabilityStatement.class).execute();
             }
             dataExportStatusService.changeDataRequestAttemptStatus(dataExportAttempt, DataExportStatus.SUCCEEDED);
             return DataExportStatus.SUCCEEDED;
