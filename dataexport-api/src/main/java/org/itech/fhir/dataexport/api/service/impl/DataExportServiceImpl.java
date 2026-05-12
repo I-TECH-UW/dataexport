@@ -84,10 +84,16 @@ public class DataExportServiceImpl implements DataExportService {
     public Future<DataExportStatus> exportNewDataFromLocalToRemote(DataExportTask dataExportTask) {
         if (allowParallel || !taskIsRunning(dataExportTask)) {
             runningTasks.add(dataExportTask.getId());
-            DataExportAttempt dataExportAttempt = dataExportAttemptDAO.save(new DataExportAttempt(dataExportTask));
-            DataExportStatus status = runDataExportAttempt(dataExportAttempt);
-            runningTasks.remove(dataExportTask.getId());
-            return new AsyncResult<>(status);
+            try {
+                DataExportAttempt dataExportAttempt = dataExportAttemptDAO.save(new DataExportAttempt(dataExportTask));
+                DataExportStatus status = runDataExportAttempt(dataExportAttempt);
+                return new AsyncResult<>(status);
+            } catch (RuntimeException e) {
+                log.error("data export task " + dataExportTask.getId() + " threw before completing", e);
+                throw e;
+            } finally {
+                runningTasks.remove(dataExportTask.getId());
+            }
         } else {
             log.warn(
                     "export for this task is already running. Parallel exports for the same task are not allowed in the current configuration");
