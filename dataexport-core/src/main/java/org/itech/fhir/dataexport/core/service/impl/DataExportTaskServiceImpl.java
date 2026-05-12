@@ -40,7 +40,7 @@ public class DataExportTaskServiceImpl extends CrudServiceImpl<DataExportTask, L
 
 		List<DataExportAttempt> lastExportAttempts = dataExportAttemptDAO
 				.findLatestDataExportAttemptsByDataExportTaskAndStatus(PageRequest.of(0, 1), dataExportTask.getId(),
-						DataExportStatus.SUCCEEDED.name());
+						DataExportStatus.SUCCEEDED);
 		if (lastExportAttempts.size() == 1) {
 			DataExportAttempt latestAttempt = lastExportAttempts.get(0);
 			lastSuccess = latestAttempt.getStartTime();
